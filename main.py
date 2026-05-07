@@ -19,10 +19,10 @@ from linebot.v3.messaging import (
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
-# ===== 環境変数 =====
-LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
-LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
-VOIFOR_API_BASE = os.environ.get("VOIFOR_API_BASE", "https://voifor-t5qi.vercel.app")
+# ===== 環境変数（前後の空白・改行・タブを自動除去）=====
+LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "").strip()
+LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
+VOIFOR_API_BASE = os.environ.get("VOIFOR_API_BASE", "https://voifor-t5qi.vercel.app").strip()
 
 if not LINE_CHANNEL_SECRET or not LINE_CHANNEL_ACCESS_TOKEN:
     logging.warning("LINE_CHANNEL_SECRET or LINE_CHANNEL_ACCESS_TOKEN missing")
