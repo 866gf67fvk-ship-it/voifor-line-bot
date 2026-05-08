@@ -105,6 +105,22 @@ async def callback(request: Request):
     return "OK"
 
 
+CHARACTER_ALIASES = {
+    "鬼術師": ["鬼術師", "鬼", "鬼術", "おに", "オニ"],
+    "エンジェル♀": ["エンジェル", "天使", "てんし", "テンシ", "angel"],
+    "クロネコ": ["クロネコ", "猫", "ねこ", "ネコ", "cat", "黒猫"],
+}
+
+
+def pick_character(user_text: str):
+    """ユーザーのメッセージにキャラ名が含まれていればそのキャラ、無ければランダム"""
+    for char in CHARACTERS:
+        for alias in CHARACTER_ALIASES.get(char["name"], []):
+            if alias in user_text:
+                return char
+    return random.choice(CHARACTERS)
+
+
 async def handle_event(event, line_api: AsyncMessagingApi):
     """個別のイベントを捌く"""
     if not isinstance(event, MessageEvent):
@@ -113,6 +129,11 @@ async def handle_event(event, line_api: AsyncMessagingApi):
         return
 
     user_text = event.message.text.strip()
+
+    # ヘルプ・最初のメッセージ対応
+    if user_text in ["ヘルプ", "help", "?", "？"]:
+        await reply(line_api, event.reply_token, _help_text())
+        return
 
     # 「占って」「うらない」が含まれる、または何かメッセージあれば占う
     if any(kw in user_text for kw in ["占って", "うらない", "占い", "fortune"]):
@@ -123,15 +144,19 @@ async def handle_event(event, line_api: AsyncMessagingApi):
         # トリガーが無くても、何か入力されたら占うのが親切
         question = user_text
 
-    # ヘルプ・最初のメッセージ対応
-    if user_text in ["ヘルプ", "help", "?", "？"]:
-        await reply(line_api, event.reply_token, _help_text())
-        return
+    # キャラクター選択：メッセージにキャラ名が含まれてれば指定、なければランダム
+    character = pick_character(user_text)
 
     try:
-        fortune_text, character_name = await call_voifor_text_fortune(question)
+        fortune_text = await call_voifor_text_fortune_with_character(question, character)
         fortune_text = clean_markdown(fortune_text)
-        reply_text = f"🔮 {character_name} の見立て\n\n{fortune_text}\n\n──────\n💬 もう一度占ってほしいなら、何かメッセージを送ってください\n📱 もっと本格的に：VOIFORアプリ（公開準備中）"
+        reply_text = (
+            f"🔮 {character['name']} の見立て\n\n"
+            f"{fortune_text}\n\n"
+            f"──────\n"
+            f"💬 別のキャラで占ってほしい時は「鬼術師で」「エンジェルで」「クロネコで」と添えてみて\n"
+            f"🌐 Web版でもっと本格占い: https://voifor-t5qi.vercel.app"
+        )
     except Exception as e:
         logging.exception("Fortune API failed")
         reply_text = f"占いの神秘との接続に失敗したわ…少し時間を置いてもう一度試してみて 🌙\n\n（{type(e).__name__}）"
@@ -139,23 +164,19 @@ async def handle_event(event, line_api: AsyncMessagingApi):
     await reply(line_api, event.reply_token, reply_text)
 
 
-async def call_voifor_text_fortune(user_text: str):
-    """VOIFOR の /text-fortune を呼び出し、占い文字列とキャラ名を返す"""
-    character = random.choice(CHARACTERS)
-
+async def call_voifor_text_fortune_with_character(user_text: str, character: dict) -> str:
+    """指定キャラで /text-fortune を呼び出し、占い文字列を返す"""
     payload = {
         "userText": user_text,
         "characterName": character["name"],
         "characterPersonality": character["personality"],
     }
-
     timeout = httpx.Timeout(30.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(f"{VOIFOR_API_BASE}/text-fortune", json=payload)
         resp.raise_for_status()
         data = resp.json()
-
-    return data.get("fortune", "（結果が読み取れませんでした）"), character["name"]
+    return data.get("fortune", "（結果が読み取れませんでした）")
 
 
 def clean_markdown(text: str) -> str:
@@ -188,15 +209,16 @@ async def reply(line_api: AsyncMessagingApi, reply_token: str, text: str):
 def _help_text():
     return (
         "🔮 VOIFOR 占い Bot 🔮\n\n"
-        "何かメッセージを送ると、AI占い師がランダムに選ばれて占ってくれます。\n\n"
+        "何かメッセージを送ると、AI占い師が占ってくれます。\n\n"
         "【使い方の例】\n"
         "・「占って」\n"
         "・「最近恋愛うまくいかない」\n"
         "・「仕事のことで悩んでる」\n"
         "・「今日の運勢」\n\n"
-        "【占い師（ランダム）】\n"
-        "・🦂 鬼術師（容赦ない）\n"
-        "・👼 エンジェル♀（優しい）\n"
-        "・🐱 クロネコ（ツンデレ）\n\n"
-        "📱 もっと本格的な占いはアプリ版で（リリース予定）"
+        "【キャラ指定】メッセージに以下を含めるとそのキャラが占う：\n"
+        "・「鬼術師で」「鬼で」 → 👹 鬼術師（容赦ない）\n"
+        "・「エンジェルで」「天使で」 → 👼 エンジェル♀（優しい）\n"
+        "・「クロネコで」「猫で」 → 🐱 クロネコ（ツンデレ）\n"
+        "・指定なし → ランダム\n\n"
+        "🌐 Web版で7種類の本格占い: https://voifor-t5qi.vercel.app"
     )
