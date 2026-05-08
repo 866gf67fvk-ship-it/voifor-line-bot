@@ -4,6 +4,7 @@ Vercel の Python サーバーレスとして動作。
 """
 
 import os
+import re
 import logging
 import random
 import httpx
@@ -129,6 +130,7 @@ async def handle_event(event, line_api: AsyncMessagingApi):
 
     try:
         fortune_text, character_name = await call_voifor_text_fortune(question)
+        fortune_text = clean_markdown(fortune_text)
         reply_text = f"🔮 {character_name} の見立て\n\n{fortune_text}\n\n──────\n💬 もう一度占ってほしいなら、何かメッセージを送ってください\n📱 もっと本格的に：VOIFORアプリ（公開準備中）"
     except Exception as e:
         logging.exception("Fortune API failed")
@@ -154,6 +156,21 @@ async def call_voifor_text_fortune(user_text: str):
         data = resp.json()
 
     return data.get("fortune", "（結果が読み取れませんでした）"), character["name"]
+
+
+def clean_markdown(text: str) -> str:
+    """LINEはMarkdownを解釈しないので、AI出力からマークダウン記法を除去して読みやすくする"""
+    # **太字** / __太字__ → 太字
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r'__(.+?)__', r'\1', text)
+    # *斜体* / _斜体_ → 斜体（記号だけ消す。日本語に*は元々ないので安全）
+    text = re.sub(r'(?<!\*)\*(?!\*)([^*\n]+?)(?<!\*)\*(?!\*)', r'\1', text)
+    text = re.sub(r'(?<!_)_(?!_)([^_\n]+?)(?<!_)_(?!_)', r'\1', text)
+    # `コード` → そのまま中身
+    text = re.sub(r'`([^`\n]+?)`', r'\1', text)
+    # ### 見出し → 見出し（行頭の#を消す）
+    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
+    return text
 
 
 async def reply(line_api: AsyncMessagingApi, reply_token: str, text: str):
