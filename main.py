@@ -8,7 +8,16 @@ import re
 import logging
 import random
 import httpx
+import sentry_sdk
 from fastapi import FastAPI, Request, HTTPException
+
+# Sentry 初期化（環境変数 SENTRY_DSN が設定されてれば自動有効化）
+if os.environ.get("SENTRY_DSN"):
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        traces_sample_rate=0.1,
+        environment=os.environ.get("VERCEL_ENV", "development"),
+    )
 from linebot.v3 import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
